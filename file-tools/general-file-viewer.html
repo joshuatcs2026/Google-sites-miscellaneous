@@ -5,26 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>General File Viewer</title>
     <style>
+        :root {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
-            font-family: system-ui, sans-serif;
+            min-height: 100vh;
             background: #f3f4f6;
             color: #111827;
         }
 
         .app {
-            max-width: 1000px;
+            width: min(1100px, 100%);
             margin: auto;
             padding: 24px;
         }
 
         .drop {
-            padding: 55px;
+            min-height: 220px;
+            padding: 40px;
+            display: grid;
+            place-items: center;
             text-align: center;
             border: 2px dashed #6366f1;
             border-radius: 16px;
             background: #fff;
             cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .drop.dragover {
+            background: #eef2ff;
+            border-color: #4338ca;
         }
 
         button {
@@ -34,6 +51,11 @@
             background: #4f46e5;
             color: #fff;
             cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .bar {
@@ -47,149 +69,307 @@
             display: flex;
         }
 
-        pre {
-            white-space: pre-wrap;
+        .meta {
+            color: #4b5563;
+            overflow-wrap: anywhere;
+        }
+
+        .viewer {
+            position: relative;
+            min-height: 420px;
             background: #111827;
-            color: #e5e7eb;
-            padding: 20px;
             border-radius: 12px;
             overflow: auto;
-            min-height: 300px;
+        }
+
+        pre {
+            margin: 0;
+            min-height: 420px;
+            padding: 20px;
+            white-space: pre-wrap;
+            overflow: auto;
+            color: #e5e7eb;
+            font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            tab-size: 4;
+        }
+
+        iframe,
+        img {
+            display: none;
+            width: 100%;
+            min-height: 420px;
+            border: 0;
+            background: white;
+        }
+
+        img {
+            object-fit: contain;
+            max-height: 75vh;
         }
 
         input {
             display: none;
         }
 
-        .meta {
+        .status {
+            margin-top: 10px;
             color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            .app {
+                padding: 12px;
+            }
+
+            .drop {
+                min-height: 180px;
+                padding: 24px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="app">
+    <main class="app">
         <h1>General File Viewer</h1>
 
-        <div id="drop" class="drop">
-            Drop a file here<br>
-            <small>or click to browse — local processing</small>
+        <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose or drop a file">
+            <div>
+                <strong>Drop any file here</strong>
+                <br>
+                <small>or click to browse — processing stays local</small>
+            </div>
             <input id="file" type="file">
         </div>
 
         <div id="bar" class="bar">
-            <button id="open">Open Viewer</button>
-            <button id="download">Download</button>
-            <button id="copy">Copy</button>
-            <button id="hash">SHA-256</button>
-            <button id="clear">Clear</button>
+            <button id="open" type="button">Open Viewer</button>
+            <button id="download" type="button">Download</button>
+            <button id="copy" type="button">Copy Text</button>
+            <button id="hash" type="button">SHA-256</button>
+            <button id="clear" type="button">Clear</button>
         </div>
 
         <p id="meta" class="meta"></p>
-        <pre id="out">No file loaded.</pre>
-    </div>
+        <div class="viewer">
+            <pre id="out">No file loaded.</pre>
+            <iframe id="frame" title="File preview"></iframe>
+            <img id="image" alt="Image preview">
+        </div>
+        <div id="status" class="status" aria-live="polite"></div>
+    </main>
 
     <script>
+        "use strict";
+
         const $ = (id) => document.getElementById(id);
+
         let file = null;
         let url = null;
-        let text = '';
+        let text = "";
+        let textAvailable = false;
 
-        function load(selectedFile) {
+        const imageTypes = new Set([
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "image/svg+xml",
+            "image/bmp"
+        ]);
+
+        function revokeUrl() {
+            if (url) {
+                URL.revokeObjectURL(url);
+                url = null;
+            }
+        }
+
+        function resetViewer() {
+            $("out").style.display = "block";
+            $("frame").style.display = "none";
+            $("image").style.display = "none";
+            $("frame").removeAttribute("src");
+            $("image").removeAttribute("src");
+        }
+
+        function isLikelyText(selectedFile) {
+            const name = selectedFile.name.toLowerCase();
+            const extension = name.includes(".") ? name.split(".").pop() : "";
+            const textExtensions = new Set([
+                "txt", "md", "markdown", "csv", "tsv", "json", "xml", "html", "htm",
+                "css", "js", "mjs", "cjs", "ts", "jsx", "tsx", "py", "java", "c", "h",
+                "cpp", "hpp", "cs", "go", "rs", "rb", "php", "swift", "kt", "kts", "lua",
+                "r", "sh", "bash", "zsh", "bat", "cmd", "ps1", "sql", "yaml", "yml",
+                "toml", "ini", "cfg", "conf", "log", "svg"
+            ]);
+
+            return selectedFile.type.startsWith("text/")
+                || selectedFile.type === "application/json"
+                || textExtensions.has(extension);
+        }
+
+        async function load(selectedFile) {
             if (!selectedFile) {
                 return;
             }
 
+            revokeUrl();
             file = selectedFile;
+            text = "";
+            textAvailable = false;
+            url = URL.createObjectURL(file);
 
-            if (url) {
-                URL.revokeObjectURL(url);
+            resetViewer();
+            $("bar").classList.add("show");
+            $("meta").textContent = `${file.name} · ${file.type || "unknown MIME"} · ${file.size.toLocaleString()} bytes`;
+            $("status").textContent = "Loading local file…";
+
+            if (imageTypes.has(file.type)) {
+                $("out").style.display = "none";
+                $("image").src = url;
+                $("image").style.display = "block";
+                $("status").textContent = "Image preview loaded locally.";
+                return;
             }
 
-            url = URL.createObjectURL(file);
-            $('meta').textContent =
-                `${file.name} · ${file.type || 'unknown MIME'} · ${file.size.toLocaleString()} bytes`;
+            if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+                $("out").textContent = "PDF detected. Use Open Viewer to open it in a new tab.";
+                $("status").textContent = "PDF detected.";
+                return;
+            }
 
-            file.text()
-                .then((contents) => {
-                    text = contents;
-                    $('out').textContent = contents;
-                })
-                .catch(() => {
-                    $('out').textContent =
-                        'This appears to be a binary file. Use Download or Open Viewer if your browser supports its format.';
-                });
+            if (isLikelyText(file)) {
+                try {
+                    text = await file.text();
+                    textAvailable = true;
+                    $("out").textContent = text;
+                    $("status").textContent = "Text loaded locally.";
+                } catch (error) {
+                    $("out").textContent = "Unable to decode this file as text.";
+                    $("status").textContent = "Text decoding failed.";
+                }
+                return;
+            }
 
-            $('bar').classList.add('show');
+            $("out").textContent =
+                "Binary or unsupported file type. Open Viewer may work if your browser supports the format; otherwise use Download.";
+            $("status").textContent = "Binary/unknown file detected.";
         }
 
-        $('drop').onclick = () => $('file').click();
-
-        $('file').onchange = (event) => {
-            load(event.target.files[0]);
-        };
-
-        $('download').onclick = () => {
+        function openViewer() {
             if (!url) {
                 return;
             }
 
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = file.name;
-            link.click();
-        };
+            const opened = window.open(url, "_blank", "noopener,noreferrer");
 
-        $('copy').onclick = () => {
-            navigator.clipboard?.writeText(text);
-        };
-
-        $('open').onclick = () => {
-            if (url) {
-                window.open(url, '_blank');
+            if (!opened) {
+                $("status").textContent = "Popup blocked. Allow popups for this site to open a new tab.";
             }
-        };
+        }
 
-        $('hash').onclick = async () => {
-            if (!file) {
+        async function copyText() {
+            if (!textAvailable) {
+                $("status").textContent = "There is no decoded text to copy.";
                 return;
             }
 
-            const buffer = await crypto.subtle.digest(
-                'SHA-256',
-                await file.arrayBuffer()
-            );
+            try {
+                await navigator.clipboard.writeText(text);
+                $("status").textContent = "Text copied to the clipboard.";
+            } catch (error) {
+                $("status").textContent = "Clipboard access was blocked by the browser.";
+            }
+        }
 
-            const hash = [...new Uint8Array(buffer)]
-                .map((byte) => byte.toString(16).padStart(2, '0'))
-                .join('');
-
-            $('meta').textContent += ` · SHA-256: ${hash}`;
-        };
-
-        $('clear').onclick = () => {
-            if (url) {
-                URL.revokeObjectURL(url);
+        async function calculateHash() {
+            if (!file || !window.crypto?.subtle) {
+                $("status").textContent = "SHA-256 is unavailable in this browser/context.";
+                return;
             }
 
-            file = null;
-            url = null;
-            text = '';
-            $('file').value = '';
-            $('meta').textContent = '';
-            $('out').textContent = 'No file loaded.';
-            $('bar').classList.remove('show');
-        };
+            try {
+                const buffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+                const hash = [...new Uint8Array(buffer)]
+                    .map((byte) => byte.toString(16).padStart(2, "0"))
+                    .join("");
 
-        ['dragover', 'dragenter'].forEach((eventName) => {
-            $('drop').addEventListener(eventName, (event) => {
+                $("meta").textContent = `${file.name} · ${file.type || "unknown MIME"} · ${file.size.toLocaleString()} bytes · SHA-256: ${hash}`;
+                $("status").textContent = "SHA-256 calculated locally.";
+            } catch (error) {
+                $("status").textContent = "Unable to calculate SHA-256 for this file.";
+            }
+        }
+
+        function downloadFile() {
+            if (!file || !url) {
+                return;
+            }
+
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = file.name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+
+        function clearAll() {
+            revokeUrl();
+            file = null;
+            text = "";
+            textAvailable = false;
+            $("file").value = "";
+            $("meta").textContent = "";
+            $("status").textContent = "";
+            $("bar").classList.remove("show");
+            resetViewer();
+            $("out").textContent = "No file loaded.";
+        }
+
+        $("drop").addEventListener("click", (event) => {
+            if (event.target !== $("file")) {
+                $("file").click();
+            }
+        });
+
+        $("drop").addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
+                $("file").click();
+            }
+        });
+
+        $("file").addEventListener("change", (event) => {
+            load(event.target.files?.[0]);
+        });
+
+        $("open").addEventListener("click", openViewer);
+        $("download").addEventListener("click", downloadFile);
+        $("copy").addEventListener("click", copyText);
+        $("hash").addEventListener("click", calculateHash);
+        $("clear").addEventListener("click", clearAll);
+
+        ["dragenter", "dragover"].forEach((eventName) => {
+            $("drop").addEventListener(eventName, (event) => {
+                event.preventDefault();
+                $("drop").classList.add("dragover");
             });
         });
 
-        $('drop').ondrop = (event) => {
-            event.preventDefault();
-            load(event.dataTransfer.files[0]);
-        };
+        ["dragleave", "drop"].forEach((eventName) => {
+            $("drop").addEventListener(eventName, (event) => {
+                event.preventDefault();
+                $("drop").classList.remove("dragover");
+            });
+        });
+
+        $("drop").addEventListener("drop", (event) => {
+            load(event.dataTransfer?.files?.[0]);
+        });
+
+        window.addEventListener("beforeunload", revokeUrl);
     </script>
 </body>
 </html>
