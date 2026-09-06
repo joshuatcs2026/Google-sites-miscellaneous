@@ -1,1 +1,135 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local PDF Viewer</title><style>body{margin:0;font-family:system-ui;background:#111827;color:#fff;height:100vh;display:flex;flex-direction:column}header{padding:10px 14px;display:flex;gap:10px;align-items:center;background:#1f2937}button{padding:8px 12px;border:0;border-radius:7px;cursor:pointer}#drop{margin:auto;padding:40px;border:2px dashed #818cf8;border-radius:14px;text-align:center;cursor:pointer}iframe{display:none;flex:1;width:100%;border:0}input{display:none}</style></head><body><header><b>PDF Viewer</b><button id="pick">Open PDF</button><button id="new">New Blob Tab</button><button id="clear">Clear</button><span id="status">No file</span></header><div id="drop">Drop a PDF here<br><small>Processed locally — no upload</small><input id="file" type="file" accept="application/pdf,.pdf"></div><iframe id="pdf"></iframe><script>const $=x=>document.getElementById(x);let u=null;function load(f){if(!f||(!f.type&&!/\.pdf$/i.test(f.name)))return alert('Please choose a PDF.');if(u)URL.revokeObjectURL(u);u=URL.createObjectURL(f);$('pdf').src=u;$('pdf').style.display='block';$('drop').style.display='none';$('status').textContent=f.name}function openNew(){if(!u)return alert('Open a PDF first.');window.open(u,'_blank')}$('pick').onclick=()=>$('file').click();$('file').onchange=e=>load(e.target.files[0]);$('new').onclick=openNew;$('clear').onclick=()=>{if(u)URL.revokeObjectURL(u);u=null;$('pdf').removeAttribute('src');$('pdf').style.display='none';$('drop').style.display='block';$('status').textContent='No file'};$('drop').onclick=()=>$('file').click();['dragover','dragenter'].forEach(x=>$('drop').addEventListener(x,e=>{e.preventDefault()}));$('drop').ondrop=e=>{e.preventDefault();load(e.dataTransfer.files[0])}</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local PDF Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, sans-serif;
+            background: #111827;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 10px 14px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: #1f2937;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        #drop {
+            margin: auto;
+            padding: 40px;
+            border: 2px dashed #818cf8;
+            border-radius: 14px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        iframe {
+            display: none;
+            flex: 1;
+            width: 100%;
+            border: 0;
+        }
+
+        input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <b>PDF Viewer</b>
+        <button id="pick">Open PDF</button>
+        <button id="new">New Blob Tab</button>
+        <button id="clear">Clear</button>
+        <span id="status">No file</span>
+    </header>
+
+    <div id="drop">
+        Drop a PDF here<br>
+        <small>Processed locally — no upload</small>
+        <input id="file" type="file" accept="application/pdf,.pdf">
+    </div>
+
+    <iframe id="pdf"></iframe>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let url = null;
+
+        function load(file) {
+            if (!file || (!file.type && !/\.pdf$/i.test(file.name))) {
+                alert('Please choose a PDF.');
+                return;
+            }
+
+            if (url) {
+                URL.revokeObjectURL(url);
+            }
+
+            url = URL.createObjectURL(file);
+            $('pdf').src = url;
+            $('pdf').style.display = 'block';
+            $('drop').style.display = 'none';
+            $('status').textContent = file.name;
+        }
+
+        function openNew() {
+            if (!url) {
+                alert('Open a PDF first.');
+                return;
+            }
+
+            window.open(url, '_blank');
+        }
+
+        $('pick').onclick = () => $('file').click();
+
+        $('file').onchange = (event) => {
+            load(event.target.files[0]);
+        };
+
+        $('new').onclick = openNew;
+
+        $('clear').onclick = () => {
+            if (url) {
+                URL.revokeObjectURL(url);
+            }
+
+            url = null;
+            $('pdf').removeAttribute('src');
+            $('pdf').style.display = 'none';
+            $('drop').style.display = 'block';
+            $('status').textContent = 'No file';
+        };
+
+        $('drop').onclick = () => $('file').click();
+
+        ['dragover', 'dragenter'].forEach((eventName) => {
+            $('drop').addEventListener(eventName, (event) => {
+                event.preventDefault();
+            });
+        });
+
+        $('drop').ondrop = (event) => {
+            event.preventDefault();
+            load(event.dataTransfer.files[0]);
+        };
+    </script>
+</body>
+</html>
