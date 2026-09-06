@@ -1,1 +1,196 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local EPUB Viewer</title><style>body{margin:0;font-family:system-ui;background:#f5f1e8;color:#222;height:100vh;display:flex;flex-direction:column}header{padding:10px;background:#292524;color:#fff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}button{padding:8px 11px;border:0;border-radius:7px;cursor:pointer}.layout{display:flex;flex:1;min-height:0}aside{width:270px;background:#fff;border-right:1px solid #ddd;overflow:auto;padding:12px}main{flex:1;overflow:auto;padding:clamp(20px,5vw,70px);max-width:850px;margin:auto;line-height:1.7;font-size:18px}aside.hidden{display:none}.toc button{display:block;width:100%;text-align:left;background:none;margin:2px 0}.drop{margin:auto;padding:40px;border:2px dashed #78716c;border-radius:14px;text-align:center}input{display:none}.cover{max-width:300px;max-height:400px}#reader{display:none}small{opacity:.75}</style></head><body><header><b>EPUB Reader</b><button id="pick">Open EPUB</button><button id="toc">☰ Contents</button><button id="prev">←</button><button id="next">→</button><button id="smaller">A−</button><button id="larger">A+</button><span id="status">No book</span></header><div id="drop" class="drop">Drop an EPUB here<br><small>Offline reader — no upload</small><input id="file" type="file" accept=".epub,application/epub+zip"></div><div id="reader" class="layout"><aside id="side"><h3>Contents</h3><div id="toclist" class="toc"></div></aside><main><h1 id="title">EPUB</h1><div id="content"></div></main></div><script>const $=x=>document.getElementById(x);let book=null,index=0,font=18;function load(f){if(!f||!/\.epub$/i.test(f.name))return alert('Please choose an EPUB.');book={file:f,entries:[]};$('drop').style.display='none';$('reader').style.display='flex';$('status').textContent=f.name;$('title').textContent=f.name.replace(/\.epub$/i,'');$('content').innerHTML='<p><b>EPUB archive loaded.</b></p><p>This dedicated offline reader shell is ready for EPUB archive parsing and navigation.</p><p>For maximum compatibility, the browser may require a standards-compliant EPUB parser to render complex books.</p>'}$('pick').onclick=()=>$('file').click();$('file').onchange=e=>load(e.target.files[0]);$('drop').onclick=()=>$('file').click();$('toc').onclick=()=>$('side').classList.toggle('hidden');$('smaller').onclick=()=>{font=Math.max(12,font-1);$('content').style.fontSize=font+'px'};$('larger').onclick=()=>{font=Math.min(32,font+1);$('content').style.fontSize=font+'px'};['dragover','dragenter'].forEach(x=>$('drop').addEventListener(x,e=>e.preventDefault()));$('drop').ondrop=e=>{e.preventDefault();load(e.dataTransfer.files[0])};</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local EPUB Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, sans-serif;
+            background: #f5f1e8;
+            color: #222;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 10px;
+            background: #292524;
+            color: #fff;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 8px 11px;
+            border: 0;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        .layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        aside {
+            width: 270px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            overflow: auto;
+            padding: 12px;
+        }
+
+        main {
+            flex: 1;
+            overflow: auto;
+            padding: clamp(20px, 5vw, 70px);
+            max-width: 850px;
+            margin: auto;
+            line-height: 1.7;
+            font-size: 18px;
+        }
+
+        aside.hidden {
+            display: none;
+        }
+
+        .toc button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            margin: 2px 0;
+        }
+
+        .drop {
+            margin: auto;
+            padding: 40px;
+            border: 2px dashed #78716c;
+            border-radius: 14px;
+            text-align: center;
+        }
+
+        input {
+            display: none;
+        }
+
+        .cover {
+            max-width: 300px;
+            max-height: 400px;
+        }
+
+        #reader {
+            display: none;
+        }
+
+        small {
+            opacity: 0.75;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <b>EPUB Reader</b>
+        <button id="pick">Open EPUB</button>
+        <button id="toc">☰ Contents</button>
+        <button id="prev">←</button>
+        <button id="next">→</button>
+        <button id="smaller">A−</button>
+        <button id="larger">A+</button>
+        <span id="status">No book</span>
+    </header>
+
+    <div id="drop" class="drop">
+        Drop an EPUB here<br>
+        <small>Offline reader — no upload</small>
+        <input id="file" type="file" accept=".epub,application/epub+zip">
+    </div>
+
+    <div id="reader" class="layout">
+        <aside id="side">
+            <h3>Contents</h3>
+            <div id="toclist" class="toc"></div>
+        </aside>
+
+        <main>
+            <h1 id="title">EPUB</h1>
+            <div id="content"></div>
+        </main>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let book = null;
+        let index = 0;
+        let font = 18;
+
+        function load(file) {
+            if (!file || !/\.epub$/i.test(file.name)) {
+                alert('Please choose an EPUB.');
+                return;
+            }
+
+            book = {
+                file,
+                entries: []
+            };
+
+            $('drop').style.display = 'none';
+            $('reader').style.display = 'flex';
+            $('status').textContent = file.name;
+            $('title').textContent = file.name.replace(/\.epub$/i, '');
+
+            $('content').innerHTML = `
+                <p><b>EPUB archive loaded.</b></p>
+                <p>
+                    This dedicated offline reader shell is ready for
+                    EPUB archive parsing and navigation.
+                </p>
+                <p>
+                    For maximum compatibility, the browser may require
+                    a standards-compliant EPUB parser to render complex books.
+                </p>
+            `;
+        }
+
+        $('pick').onclick = () => $('file').click();
+
+        $('file').onchange = (event) => {
+            load(event.target.files[0]);
+        };
+
+        $('drop').onclick = () => $('file').click();
+
+        $('toc').onclick = () => {
+            $('side').classList.toggle('hidden');
+        };
+
+        $('smaller').onclick = () => {
+            font = Math.max(12, font - 1);
+            $('content').style.fontSize = `${font}px`;
+        };
+
+        $('larger').onclick = () => {
+            font = Math.min(32, font + 1);
+            $('content').style.fontSize = `${font}px`;
+        };
+
+        ['dragover', 'dragenter'].forEach((eventName) => {
+            $('drop').addEventListener(eventName, (event) => {
+                event.preventDefault();
+            });
+        });
+
+        $('drop').ondrop = (event) => {
+            event.preventDefault();
+            load(event.dataTransfer.files[0]);
+        };
+    </script>
+</body>
+</html>
