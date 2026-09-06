@@ -5,131 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Local PDF Viewer</title>
     <style>
-        body {
-            margin: 0;
-            font-family: system-ui, sans-serif;
-            background: #111827;
-            color: #fff;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        header {
-            padding: 10px 14px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            background: #1f2937;
-        }
-
-        button {
-            padding: 8px 12px;
-            border: 0;
-            border-radius: 7px;
-            cursor: pointer;
-        }
-
-        #drop {
-            margin: auto;
-            padding: 40px;
-            border: 2px dashed #818cf8;
-            border-radius: 14px;
-            text-align: center;
-            cursor: pointer;
-        }
-
-        iframe {
-            display: none;
-            flex: 1;
-            width: 100%;
-            border: 0;
-        }
-
-        input {
-            display: none;
-        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; width: 100%; height: 100%; }
+        body { display: flex; flex-direction: column; background: #111827; color: #fff; font-family: system-ui, sans-serif; }
+        header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: #1f2937; }
+        button { padding: 8px 12px; border: 0; border-radius: 7px; cursor: pointer; }
+        #status { margin-left: auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+        #drop { margin: auto; padding: 48px; border: 2px dashed #818cf8; border-radius: 14px; text-align: center; cursor: pointer; }
+        #drop.dragging { background: #1e1b4b; }
+        #pdf { display: none; flex: 1; width: 100%; border: 0; }
+        input { display: none; }
     </style>
 </head>
 <body>
     <header>
-        <b>PDF Viewer</b>
-        <button id="pick">Open PDF</button>
-        <button id="new">New Blob Tab</button>
-        <button id="clear">Clear</button>
+        <strong>PDF Viewer</strong>
+        <button id="pick" type="button">Open PDF</button>
+        <button id="new" type="button">New Blob Tab</button>
+        <button id="clear" type="button">Clear</button>
         <span id="status">No file</span>
     </header>
 
     <div id="drop">
-        Drop a PDF here<br>
+        <strong>Drop a PDF here</strong><br>
         <small>Processed locally — no upload</small>
         <input id="file" type="file" accept="application/pdf,.pdf">
     </div>
 
-    <iframe id="pdf"></iframe>
+    <iframe id="pdf" title="PDF document"></iframe>
 
     <script>
         const $ = (id) => document.getElementById(id);
-        let url = null;
+        let blobUrl = null;
+
+        function isPdf(file) {
+            return Boolean(file && (
+                file.type === "application/pdf" || /\.pdf$/i.test(file.name)
+            ));
+        }
+
+        function releaseUrl() {
+            if (blobUrl) {
+                URL.revokeObjectURL(blobUrl);
+                blobUrl = null;
+            }
+        }
 
         function load(file) {
-            if (!file || (!file.type && !/\.pdf$/i.test(file.name))) {
-                alert('Please choose a PDF.');
+            if (!isPdf(file)) {
+                alert("Please choose a PDF file.");
                 return;
             }
 
-            if (url) {
-                URL.revokeObjectURL(url);
-            }
-
-            url = URL.createObjectURL(file);
-            $('pdf').src = url;
-            $('pdf').style.display = 'block';
-            $('drop').style.display = 'none';
-            $('status').textContent = file.name;
+            releaseUrl();
+            blobUrl = URL.createObjectURL(file);
+            $("pdf").src = blobUrl;
+            $("pdf").style.display = "block";
+            $("drop").style.display = "none";
+            $("status").textContent = file.name;
         }
 
         function openNew() {
-            if (!url) {
-                alert('Open a PDF first.');
+            if (!blobUrl) {
+                alert("Open a PDF first.");
                 return;
             }
 
-            window.open(url, '_blank');
+            const newWindow = window.open(blobUrl, "_blank");
+            if (!newWindow) {
+                alert("Popup blocked. Allow popups for this site.");
+            }
         }
 
-        $('pick').onclick = () => $('file').click();
+        $("pick").addEventListener("click", () => $("file").click());
+        $("file").addEventListener("change", (event) => load(event.target.files[0]));
+        $("new").addEventListener("click", openNew);
 
-        $('file').onchange = (event) => {
-            load(event.target.files[0]);
-        };
+        $("clear").addEventListener("click", () => {
+            releaseUrl();
+            $("pdf").removeAttribute("src");
+            $("pdf").style.display = "none";
+            $("drop").style.display = "block";
+            $("status").textContent = "No file";
+            $("file").value = "";
+        });
 
-        $('new').onclick = openNew;
-
-        $('clear').onclick = () => {
-            if (url) {
-                URL.revokeObjectURL(url);
-            }
-
-            url = null;
-            $('pdf').removeAttribute('src');
-            $('pdf').style.display = 'none';
-            $('drop').style.display = 'block';
-            $('status').textContent = 'No file';
-        };
-
-        $('drop').onclick = () => $('file').click();
-
-        ['dragover', 'dragenter'].forEach((eventName) => {
-            $('drop').addEventListener(eventName, (event) => {
+        ["dragover", "dragenter"].forEach((eventName) => {
+            $("drop").addEventListener(eventName, (event) => {
                 event.preventDefault();
+                $("drop").classList.add("dragging");
             });
         });
 
-        $('drop').ondrop = (event) => {
+        $("drop").addEventListener("dragleave", () => {
+            $("drop").classList.remove("dragging");
+        });
+
+        $("drop").addEventListener("drop", (event) => {
             event.preventDefault();
+            $("drop").classList.remove("dragging");
             load(event.dataTransfer.files[0]);
-        };
+        });
+
+        window.addEventListener("beforeunload", releaseUrl);
     </script>
 </body>
 </html>
