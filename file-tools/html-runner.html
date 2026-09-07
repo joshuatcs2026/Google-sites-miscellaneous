@@ -3,14 +3,23 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
     <title>Local HTML Runner</title>
     <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
+            min-height: 100vh;
             font-family: system-ui, sans-serif;
             background: #111827;
-            color: #fff;
-            height: 100vh;
+            color: #f9fafb;
             display: flex;
             flex-direction: column;
         }
@@ -29,6 +38,19 @@
             border: 0;
             border-radius: 7px;
             cursor: pointer;
+            background: #e5e7eb;
+            color: #111827;
+            font: inherit;
+        }
+
+        button:hover {
+            filter: brightness(0.92);
+        }
+
+        button:focus-visible,
+        #drop:focus-visible {
+            outline: 2px solid #a5b4fc;
+            outline-offset: 2px;
         }
 
         #drop {
@@ -38,61 +60,96 @@
             border-radius: 14px;
             text-align: center;
             cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        #drop.dragover {
+            background: #1e1b4b;
+            border-color: #c7d2fe;
         }
 
         iframe {
             display: none;
             flex: 1;
             width: 100%;
+            min-height: 0;
             border: 0;
+            background: white;
         }
 
         input {
             display: none;
+        }
+
+        #status {
+            color: #d1d5db;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 35vw;
         }
     </style>
 </head>
 <body>
     <header>
         <b>HTML Runner</b>
-        <button id="pick">Open HTML</button>
-        <button id="blob">Blob Runner</button>
-        <button id="blank">about:blank Runner</button>
-        <button id="safe">Sandbox Runner</button>
-        <button id="clear">Clear</button>
-        <span id="status">No file</span>
+        <button id="pick" type="button">Open HTML</button>
+        <button id="blob" type="button">Blob Runner</button>
+        <button id="blank" type="button">about:blank Runner</button>
+        <button id="safe" type="button">Sandbox Runner</button>
+        <button id="clear" type="button">Clear</button>
+        <span id="status" aria-live="polite">No file</span>
     </header>
 
-    <div id="drop">
+    <div id="drop" tabindex="0" role="button" aria-label="Choose an HTML file or drop one here">
         Drop an HTML file here<br>
         <small>Execution stays in the browser.</small>
         <input id="file" type="file" accept=".html,.htm,text/html">
     </div>
 
-    <iframe id="frame"></iframe>
+    <iframe id="frame" title="Local HTML sandbox"></iframe>
 
     <script>
+        'use strict';
+
         const $ = (id) => document.getElementById(id);
         let file = null;
         let url = null;
+
+        function isHtmlFile(selectedFile) {
+            const name = selectedFile.name.toLowerCase();
+            return selectedFile.type === 'text/html' ||
+                name.endsWith('.html') ||
+                name.endsWith('.htm');
+        }
+
+        function revokeUrl() {
+            if (url) {
+                URL.revokeObjectURL(url);
+                url = null;
+            }
+        }
 
         function load(selectedFile) {
             if (!selectedFile) {
                 return;
             }
 
-            if (url) {
-                URL.revokeObjectURL(url);
+            if (!isHtmlFile(selectedFile)) {
+                alert('Please choose an HTML (.html or .htm) file.');
+                return;
             }
 
+            revokeUrl();
             file = selectedFile;
             url = URL.createObjectURL(file);
+
             $('drop').style.display = 'none';
-            $('status').textContent = file.name;
+            $('status').textContent = `${file.name} (${file.size.toLocaleString()} bytes)`;
         }
 
         function needFile() {
-            if (!file) {
+            if (!file || !url) {
                 alert('Open an HTML file first.');
                 return false;
             }
@@ -100,14 +157,22 @@
             return true;
         }
 
+        function popupBlocked(windowRef) {
+            if (!windowRef) {
+                alert('Popup blocked. Allow popups for this site and try again.');
+                return true;
+            }
+
+            return false;
+        }
+
         function blobRunner() {
             if (!needFile()) {
                 return;
             }
 
-            if (!window.open(url, '_blank')) {
-                alert('Popup blocked.');
-            }
+            const windowRef = window.open(url, '_blank', 'noopener');
+            popupBlocked(windowRef);
         }
 
         function aboutBlankRunner() {
@@ -117,25 +182,31 @@
 
             const windowRef = window.open('about:blank', '_blank');
 
-            if (!windowRef) {
-                alert('Popup blocked.');
+            if (popupBlocked(windowRef)) {
                 return;
             }
+
+            const safeTitle = document.createElement('div');
+            safeTitle.textContent = file.name;
 
             windowRef.document.open();
             windowRef.document.write(`
                 <!doctype html>
-                <html>
+                <html lang="en">
                 <head>
                     <meta charset="utf-8">
-                    <title>${file.name.replace(/[<>]/g, '')}</title>
+                    <meta name="referrer" content="no-referrer">
+                    <title>${safeTitle.textContent}</title>
+                    <style>
+                        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+                        iframe { border: 0; width: 100%; height: 100%; display: block; }
+                    </style>
                 </head>
-                <body style="margin:0">
+                <body>
                     <iframe
-                        id="runner"
-                        style="border:0;width:100vw;height:100vh"
-                        src="${url}"
-                    ></iframe>
+                        title="Local HTML runner"
+                        src="${url}">
+                    </iframe>
                 </body>
                 </html>
             `);
@@ -148,47 +219,70 @@
             }
 
             const frame = $('frame');
-            frame.sandbox =
-                'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
+            frame.removeAttribute('src');
+            frame.sandbox = 'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
             frame.src = url;
             frame.style.display = 'block';
         }
 
-        $('pick').onclick = () => $('file').click();
+        function clearRunner() {
+            const frame = $('frame');
+            frame.removeAttribute('src');
+            frame.removeAttribute('sandbox');
+            frame.style.display = 'none';
 
-        $('file').onchange = (event) => {
-            load(event.target.files[0]);
-        };
-
-        $('drop').onclick = () => $('file').click();
-        $('blob').onclick = blobRunner;
-        $('blank').onclick = aboutBlankRunner;
-        $('safe').onclick = sandboxRunner;
-
-        $('clear').onclick = () => {
-            if (url) {
-                URL.revokeObjectURL(url);
-            }
-
+            revokeUrl();
             file = null;
-            url = null;
-            $('frame').removeAttribute('src');
-            $('frame').style.display = 'none';
             $('file').value = '';
             $('drop').style.display = 'block';
             $('status').textContent = 'No file';
-        };
+        }
 
-        ['dragover', 'dragenter'].forEach((eventName) => {
+        $('pick').addEventListener('click', () => $('file').click());
+
+        $('file').addEventListener('change', (event) => {
+            load(event.target.files[0]);
+        });
+
+        $('drop').addEventListener('click', (event) => {
+            if (event.target !== $('file')) {
+                $('file').click();
+            }
+        });
+
+        $('drop').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                $('file').click();
+            }
+        });
+
+        $('blob').addEventListener('click', blobRunner);
+        $('blank').addEventListener('click', aboutBlankRunner);
+        $('safe').addEventListener('click', sandboxRunner);
+        $('clear').addEventListener('click', clearRunner);
+
+        ['dragenter', 'dragover'].forEach((eventName) => {
             $('drop').addEventListener(eventName, (event) => {
                 event.preventDefault();
+                event.stopPropagation();
+                $('drop').classList.add('dragover');
             });
         });
 
-        $('drop').ondrop = (event) => {
-            event.preventDefault();
+        ['dragleave', 'drop'].forEach((eventName) => {
+            $('drop').addEventListener(eventName, (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                $('drop').classList.remove('dragover');
+            });
+        });
+
+        $('drop').addEventListener('drop', (event) => {
             load(event.dataTransfer.files[0]);
-        };
+        });
+
+        window.addEventListener('beforeunload', revokeUrl);
     </script>
 </body>
 </html>
