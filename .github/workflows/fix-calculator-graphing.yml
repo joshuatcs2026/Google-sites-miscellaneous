@@ -1,0 +1,83 @@
+name: Fix Calculator Suite graphing
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-graphing:
+    if: !startsWith(github.event.head_commit.message, 'Fix graphing:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch graphing section and plotter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('file-tools/calculator-suite.html')
+          s = p.read_text()
+
+          old_section = '''<section class="section wide"><div class="section-head"><span class="icon">📈</span><span class="section-title">Graphing</span><button class="btn collapse"></button></div><div class="section-body"><div class="row"><label>f(x)=</label><input id="func" class="mono" value="sin(x)" placeholder="e.g. x^2-4*x+3"><label>x min</label><input id="xmin" type="number" value="-10"><label>x max</label><input id="xmax" type="number" value="10"><button class="btn primary" onclick="plot()">Graph</button></div><canvas id="graph" width="1000" height="360"></canvas><div id="graphOut" class="result">—</div></div></section>'''
+
+          new_section = '''<section class="section wide"><div class="section-head"><span class="icon">📈</span><span class="section-title">Graphing</span><button class="btn collapse"></button></div><div class="section-body"><div class="row"><label>f(x)=</label><input id="func" class="mono" value="sin(x)" placeholder="e.g. x^2-4*x+3"><label>x min</label><input id="xmin" type="number" value="-10"><label>x max</label><input id="xmax" type="number" value="10"><label>y min</label><input id="ymin" type="number" value="-10"><label>y max</label><input id="ymax" type="number" value="10"><button class="btn primary" onclick="plot()">Graph</button></div><div class="hint">Set the visible x and y window directly. Grid and axes are drawn automatically; discontinuities are not connected.</div><canvas id="graph" width="1000" height="360"></canvas><div id="graphOut" class="result">—</div></div></section>'''
+
+          if old_section not in s:
+              raise SystemExit('Graphing section pattern not found')
+          s = s.replace(old_section, new_section, 1)
+
+          start = s.index('function plot(){')
+          end = s.index('\nfunction seqCalc(){', start)
+          new_plot = r'''function plot(){try{
+const c=$('graph'),ctx=c.getContext('2d');
+const rect=c.getBoundingClientRect();
+const cssW=Math.max(320,Math.round(rect.width||1000)),cssH=300;
+const dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1));
+c.width=Math.round(cssW*dpr);c.height=Math.round(cssH*dpr);c.style.height=cssH+'px';
+ctx.setTransform(dpr,0,0,dpr,0,0);
+const w=cssW,h=cssH;
+const x0=+$('xmin').value,x1=+$('xmax').value,y0=+$('ymin').value,y1=+$('ymax').value;
+if(!(x1>x0))throw Error('x max must exceed x min');
+if(!(y1>y0))throw Error('y max must exceed y min');
+if(![x0,x1,y0,y1].every(Number.isFinite))throw Error('Enter valid graph bounds');
+ctx.clearRect(0,0,w,h);
+ctx.fillStyle=getComputedStyle(c).backgroundColor||'#fff';ctx.fillRect(0,0,w,h);
+const X=x=>(x-x0)/(x1-x0)*w,Y=y=>h-(y-y0)/(y1-y0)*h;
+const niceStep=range=>{const raw=Math.abs(range)/8;if(!raw||!Number.isFinite(raw))return 1;const p=10**Math.floor(Math.log10(raw)),n=raw/p;return (n<1.5?1:n<3?2:n<7?5:10)*p};
+const xStep=niceStep(x1-x0),yStep=niceStep(y1-y0);
+ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif';
+ctx.textAlign='center';ctx.textBaseline='top';
+ctx.strokeStyle='#d8e0e8';ctx.lineWidth=1;ctx.beginPath();
+for(let x=Math.ceil(x0/xStep)*xStep;x<=x1+xStep*.001;x+=xStep){const px=X(x);ctx.moveTo(px,0);ctx.lineTo(px,h)}
+for(let y=Math.ceil(y0/yStep)*yStep;y<=y1+yStep*.001;y+=yStep){const py=Y(y);ctx.moveTo(0,py);ctx.lineTo(w,py)}ctx.stroke();
+ctx.fillStyle='#5f6b76';
+for(let x=Math.ceil(x0/xStep)*xStep;x<=x1+xStep*.001;x+=xStep){const px=X(x);if(px>=0&&px<=w){ctx.fillText(fmt(x),px,Math.min(h-16,(Y(0)>=0&&Y(0)<=h?Y(0)+5:5)))}}
+ctx.textAlign='left';ctx.textBaseline='middle';
+for(let y=Math.ceil(y0/yStep)*yStep;y<=y1+yStep*.001;y+=yStep){const py=Y(y);if(py>=0&&py<=h){ctx.fillText(fmt(y),4,py-8)}}
+ctx.strokeStyle='#8793a0';ctx.lineWidth=1.5;ctx.beginPath();
+if(x0<=0&&x1>=0){const px=X(0);ctx.moveTo(px,0);ctx.lineTo(px,h)}
+if(y0<=0&&y1>=0){const py=Y(0);ctx.moveTo(0,py);ctx.lineTo(w,py)}ctx.stroke();
+const expr=$('func').value.trim();if(!expr)throw Error('Enter a function');
+const samples=Math.max(800,Math.min(5000,Math.round(w*2)));
+ctx.strokeStyle='#2563eb';ctx.lineWidth=2;ctx.beginPath();let drawing=false,plotted=0;
+for(let i=0;i<samples;i++){const x=x0+(x1-x0)*i/(samples-1);let y=NaN;try{y=evalMath(expr,x)}catch{}
+if(!Number.isFinite(y)||y<y0||y>y1){drawing=false;continue}
+const px=X(x),py=Y(y);if(!drawing)ctx.moveTo(px,py);else ctx.lineTo(px,py);drawing=true;plotted++}
+ctx.stroke();
+if(!plotted)throw Error('No finite points from the function are visible in this y range');
+$('graphOut').textContent=`Plotted ${expr} on x=[${fmt(x0)}, ${fmt(x1)}], y=[${fmt(y0)}, ${fmt(y1)}]`;
+}catch(e){$('graphOut').textContent=e.message}}
+window.addEventListener('resize',()=>{const s=document.querySelector('#graph')?.closest('.section');if(s&&!s.classList.contains('minimized')&&$('func'))plot()});'''
+          s = s[:start] + new_plot + s[end:]
+          p.write_text(s)
+          PY
+      - name: Commit graphing fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add file-tools/calculator-suite.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix graphing: add y bounds and improve plotting"
+          git push
